@@ -1,0 +1,21 @@
+{
+    "name": "nldou\/aliyunOSS",
+    "description": "A AliyunOSS SDK",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "luzy",
+            "email": "zhaoyang.lu@nldou.com"
+        }
+    ],
+    "require": {
+        "aliyuncs/oss-sdk-php": "^2.3",
+        "phpunit/phpunit": "^8.0",
+        "mockery/mockery": "^1.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Nldou\\AliyunOSS\\": "src"
+        }
+    }
+}
