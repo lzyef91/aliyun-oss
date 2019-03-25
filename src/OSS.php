@@ -141,6 +141,18 @@ class OSS
             }
             $callbackBody[] = $op.'=${'.$op.'}';
         }
+        // 自定义参数
+        if (array_key_exists('callbackVar', $config)) {
+            if (!is_array($config['callbackVar'])) {
+                throw new InvalidCallbackParamsException('Invalid callback format: '.'callbackVar is not array');
+            }
+            // 自定义参数
+            foreach ($config['callbackVar'] as $k => $v) {
+                $k = strtolower($k);
+                $key = 'x:'.$k;
+                $callbackBody[] = $k.'=${'.$key.'}';
+            }
+        }
         $callback['callbackBody'] = implode('&', $callbackBody);
         return $callback;
     }
@@ -155,9 +167,10 @@ class OSS
             // 自定义参数
             // 1.必须以x:开头
             // 2.参数名不能有大写
+            // 3.参数值必须是string
             foreach ($config['callbackVar'] as $k => $v) {
                 $key = 'x:'.strtolower($k);
-                $callbackVar[$key] = $v;
+                $callbackVar[$key] = (string)$v;
             }
         }
         return $callbackVar;
@@ -214,7 +227,7 @@ class OSS
         try {
             $this->client->putObject($this->bucket, $object, $contents, $options);
         } catch (OssException $e) {
-            throw new PutObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new PutObjectException($e->getErrorMessage());
         }
         return $this->normalizeResponse($options, $object);
     }
@@ -234,7 +247,7 @@ class OSS
         try {
             $this->client->uploadFile($this->bucket, $object, $filePath, $options);
         } catch (OssException $e) {
-            throw new PutFileException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new PutFileException($e->getErrorMessage());
         }
         return $this->normalizeResponse($options, $object);
     }
@@ -248,7 +261,7 @@ class OSS
         try {
             $this->client->multiuploadFile($this->bucket, $object, $filePath, $options);
         } catch (OssException $e) {
-            throw new MultiPartUploadException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new MultiPartUploadException($e->getErrorMessage());
         }
         return $this->normalizeResponse($options, $object);
     }
@@ -258,7 +271,7 @@ class OSS
         try{
             $this->ossClient->abortMultipartUpload($this->bucket, $object, $uploadId);
         } catch(OssException $e) {
-            throw new AbortMultipartUploadException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new AbortMultipartUploadException($e->getErrorMessage());
         }
         return true;
     }
@@ -281,7 +294,7 @@ class OSS
         try {
             $list = $this->client->listMultipartUploads($this->bucket, $options);
         } catch (OssException $e) {
-            throw new ListMultipartUploadsException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new ListMultipartUploadsException($e->getErrorMessage());
         }
     }
 
@@ -323,7 +336,7 @@ class OSS
                 $pos = $$this->client->appendFile($this->bucket, $object, $file, $pos);
             }
         } catch (OssException $e) {
-            throw new AppendFileException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new AppendFileException($e->getErrorMessage());
         }
 
         return $this->normalizeResponse([], $object);
@@ -344,7 +357,7 @@ class OSS
         try {
             $result['Body'] = $this->client->getObject($this->bucket, $object, $options);
         } catch (OssException $e) {
-            throw new ReadFileException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new ReadFileException($e->getErrorMessage());
         }
         $result = array_merge($result, ['type' => 'file']);
         return $this->normalizeResponse($result, $object);
@@ -367,7 +380,7 @@ class OSS
         try {
             $this->client->getObject($this->bucket, $object, $options);
         } catch (OssException $e) {
-            throw new DownloadFileException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new DownloadFileException($e->getErrorMessage());
         }
         return $this->normalizeResponse($options, $object);
     }
@@ -409,7 +422,7 @@ class OSS
             try{
                 $this->client->copyObject($this->bucket, $fromObject, $toBucket, $toObject);
             } catch (OssException $e) {
-                throw new CopyObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
+                throw new CopyObjectException($e->getErrorMessage());
             }
 
         } else {
@@ -431,7 +444,7 @@ class OSS
         try{
             $this->client->deleteObject($bucket, $object);
         }catch (OssException $e) {
-            throw new DeleteObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new DeleteObjectException($e->getErrorMessage());
         }
         return ! $this->has($object);
     }
@@ -449,7 +462,7 @@ class OSS
         try{
             $this->client->deleteObjects($bucket, $objects);
         }catch (OssException $e) {
-            throw new DeleteObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new DeleteObjectException($e->getErrorMessage());
         }
         $fails = [];
         foreach ($objects as $obj) {
@@ -482,14 +495,14 @@ class OSS
             try {
                 $this->client->deleteObjects($this->bucket, $objects);
             } catch (OssException $e) {
-                throw new DeleteObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
+                throw new DeleteObjectException($e->getErrorMessage());
             }
         }
         // 删除目录
         try {
             $this->client->deleteObject($this->bucket, $dirname);
         } catch (OssException $e) {
-            throw new DeleteObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new DeleteObjectException($e->getErrorMessage());
         }
         return true;
     }
@@ -519,7 +532,7 @@ class OSS
             try {
                 $listObjectInfo = $this->client->listObjects($this->bucket, $options);
             } catch (OssException $e) {
-                throw new ListObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
+                throw new ListObjectException($e->getErrorMessage());
             }
             $nextMarker = $listObjectInfo->getNextMarker(); // 得到nextMarker，从上一次listObjects读到的最后一个文件的下一个文件开始继续获取文件列表
             $objectList = $listObjectInfo->getObjectList(); // 文件列表
@@ -582,7 +595,7 @@ class OSS
         try {
             $this->client->putObjectAcl($this->bucket, $object, $visibility);
         } catch (OssException $e) {
-            throw new PutObjectAclException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new PutObjectAclException($e->getErrorMessage());
         }
         return compact('visibility');
     }
@@ -598,7 +611,7 @@ class OSS
         try {
             return $this->client->doesObjectExist($this->bucket, $object);
         } catch (OssException $e) {
-            throw new CheckObjectExistException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new CheckObjectExistException($e->getErrorMessage());
         }
 
     }
@@ -615,7 +628,7 @@ class OSS
         try {
             $objectMeta = $this->client->getObjectMeta($this->bucket, $object);
         } catch (OssException $e) {
-            throw new GetObjectMetaException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            throw new GetObjectMetaException($e->getErrorMessage());
         }
         return $objectMeta;
     }
@@ -666,7 +679,7 @@ class OSS
         try {
             return $this->client->getObjectAcl($this->bucket, $object);
         } catch (OssException $e) {
-            throw new GetObjectAclException($e->getErrorCode(), $e->getErrorCode(), $e);
+            throw new GetObjectAclException($e->getErrorCode());
         }
     }
 
