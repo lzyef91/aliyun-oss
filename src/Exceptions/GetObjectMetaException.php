@@ -2,7 +2,7 @@
 
 namespace Nldou\AliyunOSS\Exceptions;
 
-class PutFileException extends Exception
+class GetObjectMetaException extends Exception
 {
 
 }

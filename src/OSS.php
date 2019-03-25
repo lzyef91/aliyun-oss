@@ -3,8 +3,8 @@
 namespace Nldou\AliyunOSS;
 
 use Nldou\AliyunOSS\Util;
-use OSS\Core\OssException;
 use OSS\OssClient;
+use OSS\Core\OssException;
 use Log;
 use Nldou\AliyunOSS\Exceptions\InvalidCallbackParamsException;
 use Nldou\AliyunOSS\Exceptions\PutObjectException;
@@ -12,12 +12,20 @@ use Nldou\AliyunOSS\Exceptions\PutFileException;
 use Nldou\AliyunOSS\Exceptions\InvalidGetObjectOptionsException;
 use Nldou\AliyunOSS\Exceptions\ReadFileException;
 use Nldou\AliyunOSS\Exceptions\DownloadFileException;
+use Nldou\AliyunOSS\Exceptions\GetObjectMetaException;
+use Nldou\AliyunOSS\Exceptions\CopyObjectException;
+use Nldou\AliyunOSS\Exceptions\DeleteObjectException;
+use Nldou\AliyunOSS\Exceptions\ListObjectException;
+use Nldou\AliyunOSS\Exceptions\PutObjectAclException;
+use Nldou\AliyunOSS\Exceptions\CheckObjectExistException;
+use Nldou\AliyunOSS\Exceptions\GetObjectAclException;
+use Nldou\AliyunOSS\Exceptions\AppendFileException;
+use Nldou\AliyunOSS\Exceptions\MultiPartUploadException;
+use Nldou\AliyunOSS\Exceptions\AbortMultipartUploadException;
+use Nldou\AliyunOSS\Exceptions\ListMultipartUploadsException;
 
 class OSS
 {
-    const VISIBILITY_PUBLIC = 'public';
-    const VISIBILITY_PRIVATE = 'private';
-
     /**
      * @var Log debug Mode true|false
      */
@@ -187,13 +195,14 @@ class OSS
      * @param string $contents 上传内容
      * @param array $options 上传回调参数
      * @param boolean $enableCallback 是否开启上传回调
+     *
      * @return array 上传成功返回结构数组
      * @throws InvalidCallbackParamsException
      * @throws PutObjectException
      */
     public function put($object, $contents, $config = [], $enableCallback = false)
     {
-        $options = null;
+        $options = [];
         if ($enableCallback) {
             $callback = json_encode($this->loadCallbackOptionsFromConfig($config));
             $callbackVar = json_encode($this->loadCallbackVarOptionsFromConfig($config));
@@ -215,6 +224,7 @@ class OSS
      *
      * @param string $object 上传路径
      * @param string $filPath 上传文件的路径
+     *
      * @return array 上传成功返回结构数组
      * @throws PutFileException
      */
@@ -227,6 +237,96 @@ class OSS
             throw new PutFileException($e->getErrorMessage(), $e->getErrorCode(), $e);
         }
         return $this->normalizeResponse($options, $object);
+    }
+
+    public function multiPartUpload($object, $filePath)
+    {
+        $options = [
+            OssClient::OSS_CHECK_MD5 => true,
+            OssClient::OSS_PART_SIZE => 10 * 1024 * 1024,
+        ];
+        try {
+            $this->client->multiuploadFile($this->bucket, $object, $filePath, $options);
+        } catch (OssException $e) {
+            throw new MultiPartUploadException($e->getErrorMessage(), $e->getErrorCode(), $e);
+        }
+        return $this->normalizeResponse($options, $object);
+    }
+
+    public function abortMultipartUpload($object, $uploadId)
+    {
+        try{
+            $this->ossClient->abortMultipartUpload($this->bucket, $object, $uploadId);
+        } catch(OssException $e) {
+            throw new AbortMultipartUploadException($e->getErrorMessage(), $e->getErrorCode(), $e);
+        }
+        return true;
+    }
+
+    public function listMultipartUploads($config)
+    {
+        $options = [
+            'delimiter' => '/',
+            'max-uploads' => 100
+        ];
+        if (array_key_exists('prefix', $config)) {
+            $options['prefix'] = $config['prefix'];
+        }
+        if (array_key_exists('key-marker', $config)) {
+            $options['key-marker'] = $config['key-marker'];
+            if (array_key_exists('upload-id-marker', $config)) {
+                $options['upload-id-marker'] = $config['upload-id-marker'];
+            }
+        }
+        try {
+            $list = $this->client->listMultipartUploads($this->bucket, $options);
+        } catch (OssException $e) {
+            throw new ListMultipartUploadsException($e->getErrorMessage(), $e->getErrorCode(), $e);
+        }
+    }
+
+    public function listParts($object, $uploadId)
+    {
+        try{
+            $listPartsInfo = $this->client->listParts($this->bucket, $object, $uploadId);
+            foreach ($listPartsInfo->getListPart() as $partInfo) {
+                print($partInfo->getPartNumber() . "\t" . $partInfo->getSize() . "\t" . $partInfo->getETag() . "\t" . $partInfo->getLastModified() . "\n");
+            }
+        } catch(OssException $e) {
+            printf(__FUNCTION__ . ": FAILED\n");
+            printf($e->getMessage() . "\n");
+            return;
+        }
+    }
+
+    /**
+     * 文件追加上传
+     * 上传的Object为Appendable Object类型，与其他上传方式生成的Normal Object类型Object不同
+     * @param string $object 上传路径
+     * @param array $filPaths 上传文件的路径
+     *
+     * @return array 上传成功返回结构数组
+     * @throws AppendFileException
+     */
+    public function appendFile($object, $filePaths)
+    {
+        $limit = 5 * 1024 * 1024 * 1024;
+        foreach ($filePaths as $file) {
+            if (filesize($file) > $limit) {
+                throw new AppendFileException('Append File: file oversized limit 5G');
+                break;
+            }
+        }
+        try {
+            $pos = 0;
+            foreach ($filePaths as $file) {
+                $pos = $$this->client->appendFile($this->bucket, $object, $file, $pos);
+            }
+        } catch (OssException $e) {
+            throw new AppendFileException($e->getErrorMessage(), $e->getErrorCode(), $e);
+        }
+
+        return $this->normalizeResponse([], $object);
     }
 
     /**
@@ -273,30 +373,57 @@ class OSS
     }
 
     /**
-     * {@inheritdoc}
+     * 重命名文件
+     * @param string $object 原文件
+     * @param string $newObject 新文件
+     *
+     * @return boolean 执行结果
+     * @throws GetObjectMetaException
+     * @throws CopyObjectException
+     * @throws DeleteObjectException
      */
     public function rename($object, $newObject)
     {
-        if (! $this->copy($object, $newObject)){
-            return false;
-        }
+        $this->copy($object, $newObject);
         return $this->delete($object);
     }
+
     /**
-     * {@inheritdoc}
+     * 拷贝文件
+     * @param string $fromObject 拷贝文件
+     * @param string $toObject 目标文件
+     * @param string $toBucket 目标bucket
+     *
+     * @return boolean true 执行成功
+     * @throws CopyObjectException
      */
-    public function copy($object, $newObject)
+    public function copy($fromObject, $toObject, $toBucket = null)
     {
-        try{
-            $this->client->copyObject($this->bucket, $object, $this->bucket, $newObject);
-        } catch (OssException $e) {
-            $this->logErr(__FUNCTION__, $e);
-            return false;
+        if (!$toBucket) {
+            $toBucket = $this->bucket;
+        }
+        // 获取文件大小
+        $size = $this->getObjectSize($fromObject);
+        // 小于1G简单拷贝
+        if ($size < 1024*1024*1024) {
+            try{
+                $this->client->copyObject($this->bucket, $fromObject, $toBucket, $toObject);
+            } catch (OssException $e) {
+                throw new CopyObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
+            }
+
+        } else {
+            throw new CopyObjectException('Copy object: oversized limit 1G');
         }
         return true;
     }
+
     /**
-     * {@inheritdoc}
+     * 删除单个文件
+     * @param string $object 删除文件
+     *
+     * @return boolean 删除结果
+     * @throws DeleteObjectException
      */
     public function delete($object)
     {
@@ -304,18 +431,49 @@ class OSS
         try{
             $this->client->deleteObject($bucket, $object);
         }catch (OssException $e) {
-            $this->logErr(__FUNCTION__, $e);
-            return false;
+            throw new DeleteObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
         }
         return ! $this->has($object);
     }
+
     /**
-     * {@inheritdoc}
+     * 删除多个文件
+     * @param string $object 删除文件
+     *
+     * @return mixed 删除结果 返回true或失败的文件数组
+     * @throws DeleteObjectException
+     */
+    public function multiDelete(Array $objects)
+    {
+        $bucket = $this->bucket;
+        try{
+            $this->client->deleteObjects($bucket, $objects);
+        }catch (OssException $e) {
+            throw new DeleteObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
+        }
+        $fails = [];
+        foreach ($objects as $obj) {
+            if ($this->has($obj)) {
+                $fails[] = $obj;
+            }
+        }
+        return empty($fails) ? true : $fails;
+    }
+
+    /**
+     * 删除目录及文件
+     * @param string $dirname
+     *
+     * @return boolean 删除结果
+     * @throws ListObjectException
+     * @throws DeleteObjectException
+     *
      */
     public function deleteDir($dirname)
     {
         $dirname = rtrim($dirname, '/').'/';
         $dirObjects = $this->listDirObjects($dirname, true);
+        // 删除文件
         if(count($dirObjects['objects']) > 0 ){
             foreach($dirObjects['objects'] as $object)
             {
@@ -324,24 +482,25 @@ class OSS
             try {
                 $this->client->deleteObjects($this->bucket, $objects);
             } catch (OssException $e) {
-                $this->logErr(__FUNCTION__, $e);
-                return false;
+                throw new DeleteObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
             }
         }
+        // 删除目录
         try {
             $this->client->deleteObject($this->bucket, $dirname);
         } catch (OssException $e) {
-            $this->logErr(__FUNCTION__, $e);
-            return false;
+            throw new DeleteObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
         }
         return true;
     }
+
     /**
      * 列举文件夹内文件列表；可递归获取子文件夹；
      * @param string $dirname 目录
      * @param bool $recursive 是否递归
-     * @return mixed
-     * @throws OssException
+     *
+     * @return array 文件列表
+     * @throws ListObjectException
      */
     public function listDirObjects($dirname = '', $recursive =  false)
     {
@@ -360,9 +519,7 @@ class OSS
             try {
                 $listObjectInfo = $this->client->listObjects($this->bucket, $options);
             } catch (OssException $e) {
-                $this->logErr(__FUNCTION__, $e);
-                // return false;
-                throw $e;
+                throw new ListObjectException($e->getErrorMessage(), $e->getErrorCode(), $e);
             }
             $nextMarker = $listObjectInfo->getNextMarker(); // 得到nextMarker，从上一次listObjects读到的最后一个文件的下一个文件开始继续获取文件列表
             $objectList = $listObjectInfo->getObjectList(); // 文件列表
@@ -402,122 +559,117 @@ class OSS
         }
         return $result;
     }
+
     /**
-     * {@inheritdoc}
-     */
-    public function createDir($object, Config $config)
-    {
-        $options = $this->getOptionsFromConfig($config);
-        try {
-            $this->client->createObjectDir($this->bucket, $object, $options);
-        } catch (OssException $e) {
-            $this->logErr(__FUNCTION__, $e);
-            return false;
-        }
-        return ['path' => $dirname, 'type' => 'dir'];
-    }
-    /**
-     * {@inheritdoc}
+     * 设置文件ACL
+     * @param string $object
+     * @param string $visibility 文件权限
+     *
+     * @return array 更改后的文件权限
+     * @throws PutObjectAclException
+     *
      */
     public function setVisibility($object, $visibility)
     {
-        $acl = ( $visibility === self::VISIBILITY_PUBLIC ) ? OssClient::OSS_ACL_TYPE_PUBLIC_READ : OssClient::OSS_ACL_TYPE_PRIVATE;
-        $this->client->putObjectAcl($this->bucket, $object, $acl);
+        if (!in_array($visibility,
+            [
+                OssClient::OSS_ACL_TYPE_PRIVATE,
+                OssClient::OSS_ACL_TYPE_PUBLIC_READ,
+                OssClient::OSS_ACL_TYPE_PUBLIC_READ_WRITE
+            ])) {
+                throw new PutObjectAclException('put object acl: visibility is illgal');
+            }
+        try {
+            $this->client->putObjectAcl($this->bucket, $object, $visibility);
+        } catch (OssException $e) {
+            throw new PutObjectAclException($e->getErrorMessage(), $e->getErrorCode(), $e);
+        }
         return compact('visibility');
     }
     /**
-     * {@inheritdoc}
+     * 判断文件是否存在
+     * @param string $object
+     *
+     * @return boolean 文件是否存在
+     * @throws CheckObjectExistException
      */
     public function has($object)
     {
-        return $this->client->doesObjectExist($this->bucket, $object);
+        try {
+            return $this->client->doesObjectExist($this->bucket, $object);
+        } catch (OssException $e) {
+            throw new CheckObjectExistException($e->getErrorMessage(), $e->getErrorCode(), $e);
+        }
+
     }
 
     /**
-     * {@inheritdoc}
+     * 获取文件元信息
+     * @param string $object
+     *
+     * @return array 文件元信息
+     * @throws GetObjectMetaException
      */
-    public function listContents($directory = '', $recursive = false)
-    {
-        $dirObjects = $this->listDirObjects($directory, true);
-        $contents = $dirObjects["objects"];
-        $result = array_map([$this, 'normalizeResponse'], $contents);
-        $result = array_filter($result, function ($value) {
-            return $value['path'] !== false;
-        });
-        return Util::emulateDirectories($result);
-    }
-    /**
-     * {@inheritdoc}
-     */
-    public function getMetadata($object)
+    public function getObjectMeta($object)
     {
         try {
             $objectMeta = $this->client->getObjectMeta($this->bucket, $object);
         } catch (OssException $e) {
-            $this->logErr(__FUNCTION__, $e);
-            return false;
+            throw new GetObjectMetaException($e->getErrorMessage(), $e->getErrorCode(), $e);
         }
         return $objectMeta;
     }
     /**
-     * {@inheritdoc}
+     * 获取文件大小
+     * @param string $object
+     *
+     * @return int 文件大小 单位B
+     * @throws GetObjectMetaException
      */
-    public function getSize($object)
+    public function getObjectSize($object)
     {
-        $meta = $this->getMetadata($object);
-        $meta['size'] = $meta['content-length'];
-        return $meta;
+        $meta = $this->getObjectMeta($object);
+        return (int)$meta['content-length'];
     }
     /**
-     * {@inheritdoc}
+     * 获取文件类型
+     * @param string $object
+     *
+     * @return string 文件MIME类型
+     * @throws GetObjectMetaException
      */
     public function getMimetype($object)
     {
-        if( $meta = $this->getMetadata($object))
-            $meta['mimetype'] = $meta['content-type'];
-        return $meta;
+        $meta = $this->getObjectMeta($object);
+        return $meta['content-type'];
     }
     /**
-     * {@inheritdoc}
+     * 获取文件上次修改时间
+     * @param string $object
+     *
+     * @return int 时间戳
+     * @throws GetObjectMetaException
      */
-    public function getTimestamp($object)
+    public function getLastmodified($object)
     {
-        if( $meta = $this->getMetadata($object))
-            $meta['timestamp'] = strtotime( $meta['last-modified'] );
-        return $meta;
+        $meta = $this->getObjectMeta($object);
+        return strtotime( $meta['last-modified'] );
     }
     /**
-     * {@inheritdoc}
+     * 获取文件ACL
+     * @param string $object
+     *
+     * @return string 文件访问权限
      */
     public function getVisibility($object)
     {
         try {
-            $acl = $this->client->getObjectAcl($this->bucket, $object);
+            return $this->client->getObjectAcl($this->bucket, $object);
         } catch (OssException $e) {
-            $this->logErr(__FUNCTION__, $e);
-            return false;
+            throw new GetObjectAclException($e->getErrorCode(), $e->getErrorCode(), $e);
         }
-
-        if ($acl == OssClient::OSS_ACL_TYPE_PUBLIC_READ ){
-            $res['visibility'] = self::VISIBILITY_PUBLIC;
-        }else{
-            $res['visibility'] = self::VISIBILITY_PRIVATE;
-        }
-        return $res;
     }
 
-    /**
-     * The the ACL visibility.
-     *
-     * @param string $object
-     *
-     * @return string
-     */
-    protected function getObjectACL($object)
-    {
-        $metadata = $this->getVisibility($object);
-        return $metadata['visibility'] === self::VISIBILITY_PUBLIC ? OssClient::OSS_ACL_TYPE_PUBLIC_READ : OssClient::OSS_ACL_TYPE_PRIVATE;
-    }
     /**
      * Normalize a result from OSS.
      *
@@ -541,59 +693,5 @@ class OSS
 
         $result = array_merge($result, Util::map($options, static::$resultMap), ['type' => 'file']);
         return $result;
-    }
-    /**
-     * Get options for a OSS call. done
-     *
-     * @param array  $options
-     *
-     * @return array OSS options
-     */
-    protected function getOptions(array $options = [], Config $config = null)
-    {
-        if ($config) {
-            $options = array_merge($options, $this->getOptionsFromConfig($config));
-        }
-        return array(OssClient::OSS_HEADERS => $options);
-    }
-    /**
-     * Retrieve options from a Config instance. done
-     *
-     * @param Config $config
-     *
-     * @return array
-     */
-    protected function getOptionsFromConfig(Config $config)
-    {
-        $options = [];
-        foreach (static::$metaOptions as $option) {
-            if (! $config->has($option)) {
-                continue;
-            }
-            $options[static::$metaMap[$option]] = $config->get($option);
-        }
-        if ($visibility = $config->get('visibility')) {
-            // For local reference
-            // $options['visibility'] = $visibility;
-            // For external reference
-            $options['x-oss-object-acl'] = $visibility === self::VISIBILITY_PUBLIC ? OssClient::OSS_ACL_TYPE_PUBLIC_READ : OssClient::OSS_ACL_TYPE_PRIVATE;
-        }
-        if ($mimetype = $config->get('mimetype')) {
-            // For local reference
-            // $options['mimetype'] = $mimetype;
-            // For external reference
-            $options['Content-Type'] = $mimetype;
-        }
-        return $options;
-    }
-    /**
-     * @param $fun string function name : __FUNCTION__
-     * @param $e
-     */
-    protected function logErr($fun, $e){
-        if( $this->debug ){
-            Log::error($fun . ": FAILED");
-            Log::error($e->getMessage());
-        }
     }
 }
