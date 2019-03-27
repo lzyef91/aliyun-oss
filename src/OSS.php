@@ -670,14 +670,14 @@ class OSS
         return $result;
     }
 
-    public function getPostAuth($config)
+    public function getPostAuth($config, $enableCallback = false)
     {
         $options['bucket'] = $this->bucket;
         $options['endPoint'] = $this->endPoint;
         $options['ssl'] = $this->ssl;
         $res = $this->loadPostOptionsFromConfig($config);
         $options = array_merge($options, $res);
-        $post = new OSSPost($options);
+        $post = new OSSPost($options, $enableCallback);
         return $post->getAuth();
     }
 
@@ -685,12 +685,8 @@ class OSS
     {
         $options = [];
         foreach (self::$PostAuthOptions as $op) {
-            if (!in_array($op, $config)) {
+            if (!array_key_exists($op, $config)) {
                 continue;
-            }
-            if ($op === 'fileType' && !in_array($config[$op], ['image', 'video', 'audio'])) {
-                throw new OSSPostException('Invalid File Type');
-                break;
             }
             $options[$op] = $config[$op];
         }

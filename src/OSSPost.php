@@ -28,8 +28,8 @@ class OSSPost
      * 获取直传授权
      *
      * @param array $config 授权配置
-     * string $fileType 要上传的文件类型（必需） 取值[image,video,audio]
-     * string $callbackUrl 回调地址（必需）
+     * string $fileType 要上传的文件类型(必须) 取值[image,video,audio]
+     * string $callbackUrl 回调地址
      * string $callbackBody OSS规定的回调参数 [规定参数名 => 回调参数名] 默认[]
      * string $callbackVar 自定义的回调参数 [参数名 => 参数值] 默认[]
      * string $bucket OSS存储空间 默认config('oss.bucket')
@@ -38,12 +38,27 @@ class OSSPost
      * int $expire 授权过期时间 单位s 默认60s
      * int $fileMaxSize 最大上传文件大小 单位B 默认104857600（100MB）
      */
-    public function __construct($config)
+    public function __construct($config, $enableCallback = false)
     {
-        $fileType = $config['fileType'];
-        if (!in_array($fileType, ['image', 'video', 'audio'])) {
+        if (!isset($config['fileType']) || !in_array($config['fileType'], ['image', 'video', 'audio'])) {
             throw new OSSPostException('Invalid File Type');
         }
+        if ($enableCallback) {
+            if (!isset($config['callbackUrl'])) {
+                throw new OSSPostException('lack callbackUrl');
+            } else {
+                // 回调
+                $callbackUrl = $config['callbackUrl'];
+                $callbackBody = !isset($config['callbackBody']) ? [] : $config['callbackBody'];
+                $callbackVar = !isset($config['callbackVar']) ? [] : $config['callbackVar'];
+                $this->callbackVar = $callbackVar;
+                $this->callback = OSSCallback::getPostCallback($callbackUrl, $callbackBody, $callbackVar);
+            }
+        } else {
+            $this->callbackVar = [];
+            $this->callback = '';
+        }
+        $fileType = $config['fileType'];
         $dir = $this->parsePostDir($fileType);
         $this->dir = $dir;
         $this->key = $this->parsePostKey($dir);
@@ -52,12 +67,6 @@ class OSSPost
         $endPoint = !isset($config['endPoint']) ? config('oss.endpoint') : $config['endPoint'];
         $ssl = !isset($config['ssl']) ? config('oss.ssl') : $config['ssl'];
         $this->host = $this->parseHost($bucket, $endPoint, $ssl);
-        // 回调
-        $callbackUrl = $config['callbackUrl'];
-        $callbackBody = !isset($config['callbackBody']) ? [] : $config['callbackBody'];
-        $callbackVar = !isset($config['callbackVar']) ? [] : $config['callbackVar'];
-        $this->callbackVar = $callbackVar;
-        $this->callback = OSSCallback::getPostCallback($callbackUrl, $callbackBody, $callbackVar);
         // policy
         $expire = !isset($config['expire']) ? 60 : $config['expire'];
         $expireAt = $this->parseExpireAt($expire);
