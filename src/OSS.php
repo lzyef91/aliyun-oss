@@ -3,6 +3,7 @@
 namespace Nldou\AliyunOSS;
 
 use Nldou\AliyunOSS\Util;
+use Nldou\AliyunOSS\OSSPost;
 use OSS\OssClient;
 use OSS\Core\OssException;
 use Log;
@@ -24,6 +25,7 @@ use Nldou\AliyunOSS\Exceptions\MultiPartUploadException;
 use Nldou\AliyunOSS\Exceptions\AbortMultipartUploadException;
 use Nldou\AliyunOSS\Exceptions\ListMultipartUploadsException;
 use Nldou\AliyunOSS\Exceptions\ListPartsException;
+use Nldou\AliyunOSS\Exceptions\OSSPostException;
 
 class OSS
 {
@@ -50,9 +52,18 @@ class OSS
         'imageInfo.format'
     ];
 
-    /**
-     * @var array
-     */
+    protected static $PostAuthOptions = [
+        'bucket',
+        'endPoint',
+        'ssl',
+        'fileType',
+        'expire',
+        'fileMaxSize',
+        'callbackUrl',
+        'callbackBody',
+        'callbackVar'
+    ];
+
     protected static $resultMap = [
         'Body'           => 'raw_contents',
         'Content-Length' => 'size',
@@ -60,146 +71,63 @@ class OSS
         'Size'           => 'size',
         'StorageClass'   => 'storage_class',
     ];
-    /**
-     * League\Flysystem\Config对象所能设置的有效值
-     * @var array
-     */
-    // protected static $metaOptions = [
-    //     'CacheControl',
-    //     'Expires',
-    //     'ServerSideEncryption',
-    //     'Metadata',
-    //     'ACL',
-    //     'ContentType',
-    //     'ContentDisposition',
-    //     'ContentLanguage',
-    //     'ContentEncoding',
-    //     'PostObjectCallback',
-    //     'PostObjectCallbackVar',
-    //     'PostObjectFileMaxSize',
-    //     'PostObjectExpire'
-    // ];
-    // protected static $metaMap = [
-    //     'CacheControl'         => 'Cache-Control',
-    //     'Expires'              => 'Expires',
-    //     'ServerSideEncryption' => 'x-oss-server-side-encryption',
-    //     'Metadata'             => 'x-oss-metadata-directive',
-    //     'ACL'                  => 'x-oss-object-acl',
-    //     'ContentType'          => 'Content-Type',
-    //     'ContentDisposition'   => 'Content-Disposition',
-    //     'ContentLanguage'      => 'response-content-language',
-    //     'ContentEncoding'      => 'Content-Encoding',
-    //     'PostObjectCallback'   => 'post-object-callback',
-    //     'PostObjectCallbackVar'=> 'post-object-callback-var',
-    //     'PostObjectFileMaxSize'=> 'post-object-file-max-size',
-    //     'PostObjectExpire'     => 'post-object-expire'
-    // ];
-    //Aliyun OSS Client OssClient
+
     protected $client;
-    //bucket name
+
     protected $bucket;
-    /**
-     * AliOssAdapter constructor.
-     *
-     * @param OssClient $client
-     * @param string    $bucket
-     * @param bool      $debug
-     */
+
+    protected $endPoint;
+
+    protected $endPointInternal;
+
+    protected $ssl;
+
     public function __construct(
         OssClient $client,
         $bucket,
+        $endPoint,
+        $endPointInternal,
+        $ssl = false,
         $debug = false
     )
     {
         $this->debug = $debug;
         $this->client = $client;
         $this->bucket = $bucket;
+        $this->endPoint = $endPoint;
+        $this->endPointInternal = $endPointInternal;
+        $this->ssl = $ssl;
+
     }
 
-    protected function loadCallbackOptionsFromConfig($config)
+    public function setBucket($bucket)
     {
-        if (!array_key_exists('callbackUrl', $config) || empty($config['callbackUrl'])) {
-            throw new InvalidCallbackParamsException('Invalid callback format: '.'lack callbackUrl');
-        }
-        if (!array_key_exists('callbackBody', $config)) {
-            throw new InvalidCallbackParamsException('Invalid callback format: '.'lack callbackBody');
-        }
-        if (!is_array($config['callbackBody'])) {
-            throw new InvalidCallbackParamsException('Invalid callback format: '.'callbackBody is not array');
-        }
-        $callback['callbackUrl'] = $config['callbackUrl'];
-        if (!array_key_exists('callbackBodyType', $config) || !in_array($config['callbackBodyType'], ['application/x-www-form-urlencoded', 'application/json'])) {
-            $callback['callbackBodyType'] = 'application/x-www-form-urlencoded';
-        } else {
-            $callback['callbackBodyType'] = $config['callbackBodyType'];
-        }
-        // body参数
-        $body = $config['callbackBody'];
-        $callbackBody = [];
-        foreach (self::$callbackBodyOptions as $op) {
-            if (!in_array($op, $body)) {
-                continue;
-            }
-            $callbackBody[] = $op.'=${'.$op.'}';
-        }
-        // 自定义参数
-        if (array_key_exists('callbackVar', $config)) {
-            if (!is_array($config['callbackVar'])) {
-                throw new InvalidCallbackParamsException('Invalid callback format: '.'callbackVar is not array');
-            }
-            // 自定义参数
-            foreach ($config['callbackVar'] as $k => $v) {
-                $k = strtolower($k);
-                $key = 'x:'.$k;
-                $callbackBody[] = $k.'=${'.$key.'}';
-            }
-        }
-        $callback['callbackBody'] = implode('&', $callbackBody);
-        return $callback;
+        $this->bucket = $bucket;
+        return $this;
     }
 
-    protected function loadCallbackVarOptionsFromConfig($config)
+    public function setEndPoint($ep)
     {
-        $callbackVar = [];
-        if (array_key_exists('callbackVar', $config)) {
-            if (!is_array($config['callbackVar'])) {
-                throw new InvalidCallbackParamsException('Invalid callback format: '.'callbackVar is not array');
-            }
-            // 自定义参数
-            // 1.必须以x:开头
-            // 2.参数名不能有大写
-            // 3.参数值必须是string
-            foreach ($config['callbackVar'] as $k => $v) {
-                $key = 'x:'.strtolower($k);
-                $callbackVar[$key] = (string)$v;
-            }
-        }
-        return $callbackVar;
+        $this->endPoint = $ep;
+        return $this;
     }
 
-    protected function loadGetObjectOptionsFromConfig($config)
+    public function setEndPointInternal($epInternal)
     {
-        $options = [];
-        // 限制下载范围
-        if (array_key_exists(OssClient::OSS_RANGE, $config) && !empty($config[OssClient::OSS_RANGE])) {
-            $options[OssClient::OSS_RANGE] = $config[OssClient::OSS_RANGE];
-        }
-        // 指定时间早于文件实际修改时间，否则报错412
-        if (array_key_exists(OssClient::OSS_LAST_MODIFIED, $config) && !empty($config[OssClient::OSS_LAST_MODIFIED])) {
-            if(!Util::is_timestamp($config[OssClient::OSS_LAST_MODIFIED])) {
-                throw new InvalidGetObjectOptionsException('Invalid getObject options: '.OssClient::OSS_LAST_MODIFIED.' is not timestamp');
-            }
-            $options[OssClient::OSS_LAST_MODIFIED] = gmdate('D, d M Y H:i:s T', $config[OssClient::OSS_LAST_MODIFIED]);
-        }
-        // 指定的Etag要和文件不匹配，否则报错
-        if (array_key_exists(OssClient::OSS_ETAG, $config) && !empty($config[OssClient::OSS_ETAG])) {
-            $options[OssClient::OSS_ETAG] = $config[OssClient::OSS_ETAG];
-        }
-        // 指定图片处理模式
-        if (array_key_exists(OssClient::OSS_PROCESS, $config) && !empty($config[OssClient::OSS_PROCESS])) {
-            $options[OssClient::OSS_PROCESS] = $config[OssClient::OSS_PROCESS];
-        }
-        return $options;
+        $this->endPointInternal = $epInternal;
+        return $this;
+    }
+
+    public function setSSL($ssl)
+    {
+        $this->ssl = $ssl;
+        return $this;
+    }
+
+    public function setDebug($debug)
+    {
+        $this->debug = $debug;
+        return $this;
     }
 
     /**
@@ -220,10 +148,8 @@ class OSS
         if ($enableCallback) {
             $callback = json_encode($this->loadCallbackOptionsFromConfig($config));
             $callbackVar = json_encode($this->loadCallbackVarOptionsFromConfig($config));
-            $options = [
-                OssClient::OSS_CALLBACK => $callback,
-                OssClient::OSS_CALLBACK_VAR => $callbackVar
-            ];
+            $options[OssClient::OSS_CALLBACK] = $callback;
+            $options[OssClient::OSS_CALLBACK_VAR] = $callbackVar;
         }
         try {
             // 返回值为数组，当callback存在时，callbackUrl返回的结果存储在数组的body字段
@@ -266,10 +192,8 @@ class OSS
         if ($enableCallback) {
             $callback = json_encode($this->loadCallbackOptionsFromConfig($config));
             $callbackVar = json_encode($this->loadCallbackVarOptionsFromConfig($config));
-            $options = [
-                OssClient::OSS_CALLBACK => $callback,
-                OssClient::OSS_CALLBACK_VAR => $callbackVar
-            ];
+            $options[OssClient::OSS_CALLBACK] = $callback;
+            $options[OssClient::OSS_CALLBACK_VAR] = $callbackVar;
         }
         try {
             // 返回值为数组，当callback存在时，callbackUrl返回的结果存储在数组的body字段
@@ -744,5 +668,118 @@ class OSS
 
         $result = array_merge($result, Util::map($options, static::$resultMap), ['type' => 'file']);
         return $result;
+    }
+
+    public function getPostAuth($config)
+    {
+        $options['bucket'] = $this->bucket;
+        $options['endPoint'] = $this->endPoint;
+        $options['ssl'] = $this->ssl;
+        $res = $this->loadPostOptionsFromConfig($config);
+        $options = array_merge($options, $res);
+        $post = new OSSPost($options);
+        return $post->getAuth();
+    }
+
+    public function loadPostOptionsFromConfig($config)
+    {
+        $options = [];
+        foreach (self::$PostAuthOptions as $op) {
+            if (!in_array($op, $config)) {
+                continue;
+            }
+            if ($op === 'fileType' && !in_array($config[$op], ['image', 'video', 'audio'])) {
+                throw new OSSPostException('Invalid File Type');
+                break;
+            }
+            $options[$op] = $config[$op];
+        }
+        return $options;
+    }
+
+    protected function loadCallbackOptionsFromConfig($config)
+    {
+        if (!array_key_exists('callbackUrl', $config) || empty($config['callbackUrl'])) {
+            throw new InvalidCallbackParamsException('Invalid callback format: '.'lack callbackUrl');
+        }
+        if (!array_key_exists('callbackBody', $config)) {
+            throw new InvalidCallbackParamsException('Invalid callback format: '.'lack callbackBody');
+        }
+        if (!is_array($config['callbackBody'])) {
+            throw new InvalidCallbackParamsException('Invalid callback format: '.'callbackBody is not array');
+        }
+        $callback['callbackUrl'] = $config['callbackUrl'];
+        if (!array_key_exists('callbackBodyType', $config) || !in_array($config['callbackBodyType'], ['application/x-www-form-urlencoded', 'application/json'])) {
+            $callback['callbackBodyType'] = 'application/x-www-form-urlencoded';
+        } else {
+            $callback['callbackBodyType'] = $config['callbackBodyType'];
+        }
+        // body参数
+        $body = $config['callbackBody'];
+        $callbackBody = [];
+        foreach (self::$callbackBodyOptions as $op) {
+            if (!in_array($op, $body)) {
+                continue;
+            }
+            $callbackBody[] = $op.'=${'.$op.'}';
+        }
+        // 自定义参数
+        if (array_key_exists('callbackVar', $config)) {
+            if (!is_array($config['callbackVar'])) {
+                throw new InvalidCallbackParamsException('Invalid callback format: '.'callbackVar is not array');
+            }
+            // 自定义参数
+            foreach ($config['callbackVar'] as $k => $v) {
+                $k = strtolower($k);
+                $key = 'x:'.$k;
+                $callbackBody[] = $k.'=${'.$key.'}';
+            }
+        }
+        $callback['callbackBody'] = implode('&', $callbackBody);
+        return $callback;
+    }
+
+    protected function loadCallbackVarOptionsFromConfig($config)
+    {
+        $callbackVar = [];
+        if (array_key_exists('callbackVar', $config)) {
+            if (!is_array($config['callbackVar'])) {
+                throw new InvalidCallbackParamsException('Invalid callback format: '.'callbackVar is not array');
+            }
+            // 自定义参数
+            // 1.必须以x:开头
+            // 2.参数名不能有大写
+            // 3.参数值必须是string
+            foreach ($config['callbackVar'] as $k => $v) {
+                $key = 'x:'.strtolower($k);
+                $callbackVar[$key] = (string)$v;
+            }
+        }
+        return $callbackVar;
+    }
+
+    protected function loadGetObjectOptionsFromConfig($config)
+    {
+        $options = [];
+        // 限制下载范围
+        if (array_key_exists(OssClient::OSS_RANGE, $config) && !empty($config[OssClient::OSS_RANGE])) {
+            $options[OssClient::OSS_RANGE] = $config[OssClient::OSS_RANGE];
+        }
+        // 指定时间早于文件实际修改时间，否则报错412
+        if (array_key_exists(OssClient::OSS_LAST_MODIFIED, $config) && !empty($config[OssClient::OSS_LAST_MODIFIED])) {
+            if(!Util::is_timestamp($config[OssClient::OSS_LAST_MODIFIED])) {
+                throw new InvalidGetObjectOptionsException('Invalid getObject options: '.OssClient::OSS_LAST_MODIFIED.' is not timestamp');
+            }
+            $options[OssClient::OSS_LAST_MODIFIED] = gmdate('D, d M Y H:i:s T', $config[OssClient::OSS_LAST_MODIFIED]);
+        }
+        // 指定的Etag要和文件不匹配，否则报错
+        if (array_key_exists(OssClient::OSS_ETAG, $config) && !empty($config[OssClient::OSS_ETAG])) {
+            $options[OssClient::OSS_ETAG] = $config[OssClient::OSS_ETAG];
+        }
+        // 指定图片处理模式
+        if (array_key_exists(OssClient::OSS_PROCESS, $config) && !empty($config[OssClient::OSS_PROCESS])) {
+            $options[OssClient::OSS_PROCESS] = $config[OssClient::OSS_PROCESS];
+        }
+        return $options;
     }
 }

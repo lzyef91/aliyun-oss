@@ -25,20 +25,20 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
             $bucket    = $config['bucket'];
             $ssl       = $config['ssl'];
             $debug     = $config['debug'];
-
             $endPoint  = $config['endpoint'];
-            // 生产环境优先使用内网访问
+            $endPointInternal = $config['endpointInternal'];
+            // 生产环境SDK优先使用内网访问
             if ($app->environment('production')) {
-                $ep = empty($config['endpointInternal']) ? $endPoint : $config['endpointInternal'];
+                $clientEp = empty($endPointInternal) ? $endPoint : $endPointInternal;
             } else {
-                $ep = $endPoint;
+                $clientEp = $endPoint;
             }
-
-            $client  = new OssClient($accessId, $accessKey, $ep);
+            // SDK客户端
+            $client  = new OssClient($accessId, $accessKey, $clientEp);
             // 是否使用https
             $client->setUseSSL = $ssl;
 
-            return new OSS($client, $bucket, $debug);
+            return new OSS($client, $bucket, $endPoint, $endPointInternal, $ssl, $debug);
         });
         $this->app->alias(OSS::class, 'oss');
     }

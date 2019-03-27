@@ -21,44 +21,35 @@ class OSSCallback
         'imageInfo.format'
     ];
 
-    public function __construct($callbackUrl, $body = [], $params = [], $bodyType = 'application/x-www-form-urlencoded')
+    public static function getPostCallback($url, $body = [], $params = [], $bodyType = 'application/x-www-form-urlencoded')
     {
-        $this->callbackUrl = $callbackUrl;
-        $this->callbackBody = $this->parseCallbackBody($body, $params);
-        $this->callbackBodyType = $bodyType;
-    }
 
-    public function getBase64()
-    {
-        $callback = [
-            "callbackUrl" => $this->callbackUrl,
-            "callbackBody" => $this->callbackBody,
-            "callbackBodyType" => $this->callbackBodyType
-        ];
-        // logger($callback);
-        $callback_json = json_encode($callback);
-        $callback_base64 = base64_encode($callback_json);
-        return $callback_base64;
-    }
-
-    public function parseCallbackBody($body, $params)
-    {
-        $callback = [];
+        $callbackBodyArr = [];
         // body参数
         foreach (self::$bodyOptions as $op) {
             if (!array_key_exists($op, $body)) {
                 continue;
             }
-            $callback[] = empty($body[$op]) ? $op.'=${'.$op.'}' : $body[$op].'=${'.$op.'}';
+            $callbackBodyArr[] = empty($body[$op]) ? $op.'=${'.$op.'}' : $body[$op].'=${'.$op.'}';
         }
         // 自定义参数
         // 1.必须以x:开头
         // 2.参数名不能有大写
         foreach ($params as $k => $p) {
             $var = strtolower($k);
-            $callback[] = $var.'=${x:'.$var.'}';
+            $callbackBodyArr[] = $var.'=${x:'.$var.'}';
         }
-        return implode('&', $callback);
+        $callbackBody = implode('&', $callbackBodyArr);
+
+        $callback = [
+            "callbackUrl" => $url,
+            "callbackBody" => $callbackBody,
+            "callbackBodyType" => $bodyType
+        ];
+
+        $callback_json = json_encode($callback);
+        $callback_base64 = base64_encode($callback_json);
+        return $callback_base64;
     }
 
     public static function checkSignature($path, $authorizationBase64, $pubKeyUrlBase64, $body = "")
