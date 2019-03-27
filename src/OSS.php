@@ -23,6 +23,7 @@ use Nldou\AliyunOSS\Exceptions\AppendFileException;
 use Nldou\AliyunOSS\Exceptions\MultiPartUploadException;
 use Nldou\AliyunOSS\Exceptions\AbortMultipartUploadException;
 use Nldou\AliyunOSS\Exceptions\ListMultipartUploadsException;
+use Nldou\AliyunOSS\Exceptions\ListPartsException;
 
 class OSS
 {
@@ -225,7 +226,11 @@ class OSS
             ];
         }
         try {
-            $this->client->putObject($this->bucket, $object, $contents, $options);
+            // 返回值为数组，当callback存在时，callbackUrl返回的结果存储在数组的body字段
+            $res = $this->client->putObject($this->bucket, $object, $contents, $options);
+            if ($enableCallback) {
+                return json_decode($res['body'], true);
+            }
         } catch (OssException $e) {
             throw new PutObjectException($e->getErrorMessage());
         }
@@ -252,14 +257,26 @@ class OSS
         return $this->normalizeResponse($options, $object);
     }
 
-    public function multiPartUpload($object, $filePath)
+    public function multiPartUpload($object, $filePath, $config = [], $enableCallback = false)
     {
         $options = [
             OssClient::OSS_CHECK_MD5 => true,
             OssClient::OSS_PART_SIZE => 10 * 1024 * 1024,
         ];
+        if ($enableCallback) {
+            $callback = json_encode($this->loadCallbackOptionsFromConfig($config));
+            $callbackVar = json_encode($this->loadCallbackVarOptionsFromConfig($config));
+            $options = [
+                OssClient::OSS_CALLBACK => $callback,
+                OssClient::OSS_CALLBACK_VAR => $callbackVar
+            ];
+        }
         try {
-            $this->client->multiuploadFile($this->bucket, $object, $filePath, $options);
+            // 返回值为数组，当callback存在时，callbackUrl返回的结果存储在数组的body字段
+            $res = $this->client->multiuploadFile($this->bucket, $object, $filePath, $options);
+            if ($enableCallback) {
+                return json_decode($res['body'], true);
+            }
         } catch (OssException $e) {
             throw new MultiPartUploadException($e->getErrorMessage());
         }
@@ -269,7 +286,7 @@ class OSS
     public function abortMultipartUpload($object, $uploadId)
     {
         try{
-            $this->ossClient->abortMultipartUpload($this->bucket, $object, $uploadId);
+            $this->client->abortMultipartUpload($this->bucket, $object, $uploadId);
         } catch(OssException $e) {
             throw new AbortMultipartUploadException($e->getErrorMessage());
         }
@@ -293,6 +310,15 @@ class OSS
         }
         try {
             $list = $this->client->listMultipartUploads($this->bucket, $options);
+            $ret = [];
+            foreach ($list->getUploads() as $upload){
+                $row = [];
+                $row['key'] = $upload->getKey();
+                $row['uploadId'] = $upload->getUploadId();
+                $row['initiated'] = $upload->getInitiated();
+                $ret[] = $row;
+            }
+            return $ret;
         } catch (OssException $e) {
             throw new ListMultipartUploadsException($e->getErrorMessage());
         }
@@ -302,13 +328,18 @@ class OSS
     {
         try{
             $listPartsInfo = $this->client->listParts($this->bucket, $object, $uploadId);
+            $ret = [];
             foreach ($listPartsInfo->getListPart() as $partInfo) {
-                print($partInfo->getPartNumber() . "\t" . $partInfo->getSize() . "\t" . $partInfo->getETag() . "\t" . $partInfo->getLastModified() . "\n");
+                $row = [];
+                $row['partNumber'] = $partInfo->getPartNumber();
+                $row['size'] = $partInfo->getSize();
+                $row['eTag'] = $partInfo->getETag();
+                $row['lastModified'] = $partInfo->getLastModified();
+                $ret[] = $row;
             }
+            return $ret;
         } catch(OssException $e) {
-            printf(__FUNCTION__ . ": FAILED\n");
-            printf($e->getMessage() . "\n");
-            return;
+            throw new ListPartsException($e->getErrorMessage());
         }
     }
 
@@ -330,10 +361,14 @@ class OSS
                 break;
             }
         }
-        try {
+        if ($this->has($object)) {
+            $pos = $this->getObjectSize($object);
+        } else {
             $pos = 0;
+        }
+        try {
             foreach ($filePaths as $file) {
-                $pos = $$this->client->appendFile($this->bucket, $object, $file, $pos);
+                $pos = $this->client->appendFile($this->bucket, $object, $file, $pos);
             }
         } catch (OssException $e) {
             throw new AppendFileException($e->getErrorMessage());
@@ -440,9 +475,8 @@ class OSS
      */
     public function delete($object)
     {
-        $bucket = $this->bucket;
         try{
-            $this->client->deleteObject($bucket, $object);
+            $this->client->deleteObject($this->bucket, $object);
         }catch (OssException $e) {
             throw new DeleteObjectException($e->getErrorMessage());
         }
@@ -626,7 +660,11 @@ class OSS
     public function getObjectMeta($object)
     {
         try {
-            $objectMeta = $this->client->getObjectMeta($this->bucket, $object);
+            if ($this->has($object)){
+                $objectMeta = $this->client->getObjectMeta($this->bucket, $object);
+            } else {
+                throw new GetObjectMetaException('object do not exist');
+            }
         } catch (OssException $e) {
             throw new GetObjectMetaException($e->getErrorMessage());
         }
