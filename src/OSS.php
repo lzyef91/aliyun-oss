@@ -25,7 +25,6 @@ use Nldou\AliyunOSS\Exceptions\MultiPartUploadException;
 use Nldou\AliyunOSS\Exceptions\AbortMultipartUploadException;
 use Nldou\AliyunOSS\Exceptions\ListMultipartUploadsException;
 use Nldou\AliyunOSS\Exceptions\ListPartsException;
-use Nldou\AliyunOSS\Exceptions\OSSPostException;
 
 class OSS
 {

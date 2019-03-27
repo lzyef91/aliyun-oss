@@ -70,7 +70,7 @@ class OSSPost
         // policy
         $expire = !isset($config['expire']) ? 60 : $config['expire'];
         $expireAt = $this->parseExpireAt($expire);
-        $fileMaxSize = !isset($config['fileMaxSize']) ? 104857600 : $config['fileMaxSize'];
+        $fileMaxSize = !isset($config['fileMaxSize']) ? config('oss.'.$fileType.'UploadMaxSize') : $config['fileMaxSize'];
         $this->policy = $this->parsePolicy($expireAt, $fileMaxSize, $dir, $this->callback);
         // signature
         $this->accessId = config('oss.access_id');
