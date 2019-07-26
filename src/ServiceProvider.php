@@ -18,6 +18,9 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
 
     public function register()
     {
+        $source = realpath(__DIR__.'/Config/oss.php');
+        $this->mergeConfigFrom($source, 'oss');
+        
         $this->app->singleton(OSS::class, function ($app) {
             $config = config('oss');
             $accessId  = $config['access_id'];
