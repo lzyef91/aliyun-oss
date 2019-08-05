@@ -61,4 +61,18 @@ return [
     'imageUploadMaxSize' => env('ALIYUN_OSS_IMAGE_UPLOAD_MAX_SIZE', 10485760),
     'videoUploadMaxSize' => env('ALIYUN_OSS_VIDEO_UPLOAD_MAX_SIZE', 104857600),
     'audioUploadMaxSize' => env('ALIYUN_OSS_VIDEO_AUDIO_MAX_SIZE', 52428800),
+    /*
+    |--------------------------------------------------------
+    | connections的key与bucket相同
+    |--------------------------------------------------------
+    */
+    'connections' => [
+        // 'nldou-mp' => [
+        //     'bucket' => env('ALIYUN_OSS_CONNECTION_BUCKET'),
+        //     'ssl' => env('ALIYUN_OSS_CONNECTION_SSL', true),
+        //     'isCName' => env('ALIYUN_OSS_CONNECTION_CNAME', false),
+        //     'cdnDomain' => env('ALIYUN_OSS_CONNECTION_CDN_DOMAIN', '')
+        // ],
+        // ...
+    ],
 ];
