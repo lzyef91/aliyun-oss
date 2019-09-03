@@ -44,7 +44,7 @@ return [
     | TCP协议，true为https，false为http
     |--------------------------------------------------------
     */
-    'ssl' => env('ALIYUN_OSS_ENABLE_SSL', false),
+    'ssl' => env('ALIYUN_OSS_ENABLE_SSL', true),
     /*
     |--------------------------------------------------------
     | 上传目录
