@@ -85,8 +85,8 @@ class OSS
         OssClient $client,
         $bucket,
         $endPoint,
-        $endPointInternal,
-        $ssl = false,
+        $endPointInternal = '',
+        $ssl = true,
         $debug = false
     )
     {
