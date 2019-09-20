@@ -12,13 +12,13 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
     public function boot()
     {
         if ($this->app->runningInConsole()) {
-            $this->publishes([__DIR__.'/config' => config_path()], 'nldou-aliyunoss-config');
+            $this->publishes([__DIR__.'/Config' => config_path()], 'nldou-aliyunoss-config');
         }
     }
 
     public function register()
     {
-        $source = realpath(__DIR__.'/config/oss.php');
+        $source = realpath(__DIR__.'/Config/oss.php');
         $this->mergeConfigFrom($source, 'oss');
 
         $this->app->singleton(OSS::class, function ($app) {
