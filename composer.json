@@ -10,7 +10,8 @@
     ],
     "require": {
         "aliyuncs/oss-sdk-php": "^2.3",
-        "guzzlehttp/guzzle": "^6.3"
+        "guzzlehttp/guzzle": "^6.3",
+        "illuminate/support": "^5.8 || ^6.0 || ^7.0"
     },
     "autoload": {
         "psr-4": {

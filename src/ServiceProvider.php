@@ -4,11 +4,11 @@ namespace Nldou\AliyunOSS;
 
 use Nldou\AliyunOSS\OSS;
 use OSS\OssClient;
+use Illuminate\Support\ServiceProvider as LavarelServiceProvider;
+use Illuminate\Contracts\Support\DeferrableProvider;
 
-class ServiceProvider extends \Illuminate\Support\ServiceProvider
+class ServiceProvider extends LavarelServiceProvider implements DeferrableProvider
 {
-    protected $defer = true;
-
     public function boot()
     {
         if ($this->app->runningInConsole()) {
