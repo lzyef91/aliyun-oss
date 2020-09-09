@@ -4,6 +4,7 @@ namespace Nldou\AliyunOSS;
 
 use Nldou\AliyunOSS\OSSCallback;
 use Nldou\AliyunOSS\Exceptions\OSSPostException;
+use Illuminate\Support\Str;
 
 /**
  * Class OSSPostAuth
@@ -150,7 +151,7 @@ class OSSPost
     public function parsePostDir($type)
     {
         // 分区
-        $dir = str_random(6).'/';
+        $dir = Str::random(6).'/';
         // 目录
         switch (strtolower($type)) {
             case 'video':
@@ -173,7 +174,7 @@ class OSSPost
     public function parsePostKey($dir)
     {
         // 生成文件名
-        $filename = str_random(7).uniqid();
+        $filename = Str::random(7).uniqid();
         $this->id = $filename;
         $key = $dir.$filename;
         return $key;
